@@ -1,0 +1,12 @@
+12/16/2013 (cev;fps)
+Export of summary parameter library for limited release (S. Wiseman, Brown U.)
+
+1. summary_parameters development trunk tagged as v2.0
+2. summary_parameters tag v2.0 exported from subversion
+3. non-procedure, developmental, and intermediate files removed from export archive
+4. IDL dependencies from outside summary_parameters trunk copied into export archive
+	- mro_crism_wavelength_defaults() [/project/crism/users/seelofp1/idl/mro_crism_trunk/mro_crism_util/]
+	- sign_ternary() [/project/crism/users/seelofp1/idl/utilities_trunk/]
+	- mro_crism_lookupwv() [/CAT_ENVI/src/save_add/CAT_programs/Additions/]
+	- cat_int_tabulated() [/CAT_ENVI/src/save_add/CAT_programs/Supplementals/]
+	
