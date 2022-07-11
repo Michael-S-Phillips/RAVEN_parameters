@@ -49,7 +49,6 @@ function crism_summary_olindex3, cube, wvt, hyper=hyper, ignore_val=ignore_val, 
     R1862 = crism_sumutil_single(cube, wvt, 1862, hyper=hyper, /norestore, kernel_width = 7) 
     
     ; identify nearest CRISM wavelength
-
     W1210 = (mro_crism_lookupwv(1210,wvt,/w))[0]
     W1250 = (mro_crism_lookupwv(1250,wvt,/w))[0]
     W1263 = (mro_crism_lookupwv(1263,wvt,/w))[0]
