@@ -82,14 +82,23 @@ def getBandRatio(cube,wvt,num_l,denom_l,num_w=5,denom_w=5):
 def normalizeParameter(p):
     return (p-np.nanmean(p))/np.nanstd(p)
 
-def browse2bit(B,cropZero=True):
+def browse2bit(B,cropZero=True,norm=False):
     for i in range(3):
+        if norm is True:
+            B[:,:,i] = normalizeParameter(B[:,:,i])
         if cropZero is True:
             b = np.where(B[:,:,i]>0,B[:,:,i],0)
         else:
             b=B[:,:,i]
         B[:,:,i] = np.array((256*((b-np.nanmin(b))/(np.nanmax(b)-np.nanmin(b)))),dtype='int')
     return B
+
+def stretchBand(p,stype='linear',perc = 0.02):
+    if stype is 'linear':
+        sp = (p-(1-perc)*np.min(p))/((1-perc)*(np.max(p)-np.min(p)))
+    # if flag is '1std':
+    #     sp = 
+    return sp
 
 
     

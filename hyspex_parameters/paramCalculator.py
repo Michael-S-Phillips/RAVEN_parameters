@@ -44,14 +44,14 @@ class paramCalculator:
         print('objects loaded\nloading data')
         tic = timeit.default_timer()
         self.v = np.flip(np.transpose(self.v_.load(),(1,0,2)),axis=0)
+        self.s = np.flip(np.transpose(self.s_.load(),(1,0,2)),axis=0)
         toc = timeit.default_timer()-tic
         print(f'{np.round(toc/60,2)} minutes to load data')
-        self.s = np.flip(np.transpose(self.s_.load(),(1,0,2)),axis=0)
         # load wave tables
         self.v_bands = [float(b) for b in self.v_.metadata['wavelength']]
         self.s_bands = [float(b) for b in self.s_.metadata['wavelength']]
-        self.v_preview_bands = [int(b) for b in self.v_.metadata['default bands']]
-        self.s_preview_bands = [int(b) for b in self.s_.metadata['default bands']]
+        self.v_preview_bands = [int(float(b)) for b in self.v_.metadata['default bands']]
+        self.s_preview_bands = [int(float(b)) for b in self.s_.metadata['default bands']]
         # self.HCPINDEX2()
         # self.LCPINDEX2()
         # self.OLINDEX3()
@@ -197,7 +197,7 @@ class paramCalculator:
         rp_r = np.empty(np.shape(cube)[0:2])
         for i in range(np.shape(rp_)[0]):
             for j in range(np.shape(rp_)[1]):
-                coefs = np.polyfit(rp_w,rp_[i,j,:],5)
+                coefs = np.polyfit(rp_w,rp_[i,j,:],4)
                 poly = np.poly1d(coefs)
                 y_ = list(poly(x_))
                 rp_l[i,j] = x_[y_.index(np.max(y_))]/1000
@@ -637,6 +637,22 @@ class paramCalculator:
         print(f'HYS finished in {round(toc,2)} seconds')
         return img
     
+    def MNF_(self):
+        s = self.s
+        v = self.v
+        tic = timeit.default_timer()
+        s_signal = calc_stats(s)
+        s_noise = noise_from_diffs(s)
+        s_mnfr = mnf(s_signal, s_noise)
+        s_mnf10 = s_mnfr.reduce(s, num=10)
+        
+        v_signal = calc_stats(v)
+        v_noise = noise_from_diffs(v)
+        v_mnfr = mnf(v_signal, v_noise)
+        v_mnf10 = v_mnfr.reduce(v, num=10)
+        toc = timeit.default_timer()-tic
+        print(f'{round(toc/60,2)} minutes to calculate MNF')
+        return s_mnf10, v_mnf10
     
     
     

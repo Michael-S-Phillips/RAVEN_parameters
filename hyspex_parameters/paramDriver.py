@@ -11,14 +11,14 @@ import cv2
 from param_utils import browse2bit
 from paramCalculator import paramCalculator
 # sys.path.append('/Users/phillms1/Documents/Work/RAVEN/RAVEN_parameters/hyspex_parameters/')
-data_path = os.path.abspath(os.path.join('/Volumes/Utumno/HySpex_training_data/RockGarden2022/RAD'))
-shdr = data_path + '/RAD_SWIR/rockGardenTest_Mjolnir_S620_SN7062_39781us_2022-06-01T195010_raw_rad_keystone_smile_float32.hdr'
-vhdr = data_path + '/RAD_VNIR/rockGardenTest_Mjolnir_V1240_SN5011_19784us_2022-06-01T195010_raw_rad_keystone_smile_float32.hdr'
+data_path = os.path.abspath(os.path.join('/Volumes/Utumno/HySpex_training_data/'))
+shdr = data_path + '/TrainingData/SWIR_OUTPUT_training/boresight_26_april_1_Mjolnir_S620_SN7064_raw_rad_keystone_smile_bsq_float32_geo.hdr'
+vhdr = data_path + '/TrainingData/VNIR_OUTPUT_training/boresight_26_april_1_Mjolnir_V1240_SN5037_raw_rad_keystone_smile_spectralbinningx2_bsq_float32_geo.hdr'
 
 p = paramCalculator(vhdr,shdr,data_path)
 
 #%% browse block
-savepath = '/Users/phillms1/Documents/Work/RAVEN/RAVEN_parameters/hyspex_parameters/BrowseProducts/'
+savepath = '/Users/phillms1/Documents/Work/RAVEN/RAVEN_parameters/hyspex_parameters/BrowseProducts/Aerial/'
 if os.path.isdir(savepath) is False:
     os.mkdir(savepath)
 
@@ -66,3 +66,16 @@ cv2.imwrite(savepath+n,browse2bit(bp))
 bp = p.HYS()
 n = 'HYS'+'.png'
 cv2.imwrite(savepath+n,browse2bit(bp))
+
+#%% MNF block
+
+s_mnf10, v_mnf10 = p.MNF_()
+bs = [2,1,0]
+sName = 'SWIR_MNF.png'
+cv2.imwrite(savepath+sName,s_mnf10[:,:,bs])
+sName = 'SWIR_MNF_8bit.png'
+cv2.imwrite(savepath+sName,browse2bit(s_mnf10[:,:,bs],cropZero=True,norm=True))
+vName = 'VNIR_MNF.png'
+cv2.imwrite(savepath+vName,v_mnf10[:,:,bs])
+vName = 'VNIR_MNF_8bit.png'
+cv2.imwrite(savepath+vName,browse2bit(v_mnf10[:,:,bs],cropZero=True,norm=True))
