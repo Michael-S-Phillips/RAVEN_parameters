@@ -10,16 +10,31 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 from oreXpressParamCalculator import oreXpressParamCalculator
+from readSed import *
+from readLibrary import *
 
 rootPath = '/Users/phillms1/Documents/Work/RAVEN/RAVEN_parameters/OreXpressParameters/'
-dataFile = 'CompiledFieldSpecta_111219.csv'
-df = pd.read_csv(rootPath + dataFile)
+# dataFile = 'CompiledFieldSpecta_111219.csv'
+# df = pd.read_csv(rootPath + dataFile)
+
+# -----------------------------------------------------------------------------
+# read directory with .sed files
+dataPath = '/Users/phillms1/Documents/Work/RAVEN/RAVEN_parameters/OreXpressParameters/exampleSpectra/*.sed'
+# -----------------------------------------------------------------------------
+
+# -----------------------------------------------------------------------------
+# read library files
+# mineral = 'Saponite'
+# dataPath = f'/Users/phillms1/Documents/Work/RAVEN/RAVEN_parameters/OreXpressParameters/librarySpectra/*{mineral}*/s*F.txt'
+# -----------------------------------------------------------------------------
+
+df = getSedFiles(dataPath)
 wvt = df.iloc[:,0]
 spectra = df.iloc[:,1:]/100
 specNames = list(spectra.columns)
-paramNames = ['OLINDEX3','LCPINDEX2','HCPINDEX2','BDI1000VIS','BD530_2','BD920_2','BD2210_2','BD2190','D2165','BD2250','BD2355','BD2290','D2300','D2200','BD1900r2','MIN2295_248','MIN2345_253','BDCARB','SINDEX2','BD2100_2','BD1900_2','ISLOPE','BD1400','IRR2','MIN2250','BD2250','BD1900r2']
+paramNames = ['OLINDEX3','LCPINDEX2','HCPINDEX2','BDI1000VIS','BD530_2','BD920_2','BD2210_2','BD2190','D2165','BD2250','BD2355','BD2290','D2300','D2200','BD1900r2','MIN2295_248','MIN2345_253','BDCARB','SINDEX2','BD2100_2','BD1900_2','MIN2250','BD2250','BD1900r2']#,'ISLOPE','BD1400','IRR2']
 
-pdf_ = np.empty((27,len(specNames)))
+pdf_ = np.empty((len(paramNames),len(specNames)))
 # pd.DataFrame(paramNames)
 # paramDF.columns = list(specNames)
 i = 0
@@ -53,14 +68,14 @@ for spectrum in specNames:
     pdf_[18,i] = opc.SINDEX2()
     pdf_[19,i] = opc.BD2100_2()
     pdf_[20,i] = opc.BD1900_2()
-    # CHL
-    pdf_[21,i] = opc.ISLOPE()
-    pdf_[22,i] = opc.BD1400()
-    pdf_[23,i] = opc.IRR2()
     # HYS
-    pdf_[24,i] = opc.MIN2250()
-    pdf_[25,i] = opc.BD2250()
-    pdf_[26,i] = opc.BD1900r2()
+    pdf_[21,i] = opc.MIN2250()
+    pdf_[22,i] = opc.BD2250()
+    pdf_[23,i] = opc.BD1900r2()
+    # CHL
+    # pdf_[21,i] = opc.ISLOPE()
+    # pdf_[22,i] = opc.BD1400()
+    # pdf_[23,i] = opc.IRR2()
     
     i=i+1
 
@@ -69,25 +84,25 @@ paramDF = pd.DataFrame(pdf_,columns=specNames)
 
 #%% plot cell
 import os
-dateStr = '220712' #YYMMDD
+dateStr = '220713' #YYMMDD
 figSavePath = rootPath+'Output/'+dateStr+'/'
 
 if os.path.isdir(figSavePath) is False:
     os.mkdir(figSavePath)
     
-i=101
-plt.figure(num=1,figsize=(6.5,4),dpi=300)
-plt.bar(np.linspace(1,len(paramNames),len(paramNames)),paramDF.iloc[:,i])
-plt.title(specNames[i]+' Parameter Values')
-plt.xticks(np.linspace(1,len(paramNames),len(paramNames)),labels=paramNames,rotation=90)
-plt.subplots_adjust(bottom=0.3)
-plt.savefig(figSavePath+specNames[i]+'_Bar.png', dpi=300)
-
-plt.figure(num=2,figsize=(6.5,4),dpi=300)
-plt.plot(wvt,spectra.iloc[:,i])
-plt.title('Spectrum '+specNames[i])
-plt.xlabel('Wavelength (nm)')
-plt.savefig(figSavePath+specNames[i]+'_Spectrum.png', dpi=300)
+for i in range(np.shape(paramDF)[1]):
+    plt.figure(figsize=(6.5,4),dpi=300)
+    plt.bar(np.linspace(1,len(paramNames),len(paramNames)),paramDF.iloc[:,i])
+    plt.title(specNames[i]+' Parameter Values')
+    plt.xticks(np.linspace(1,len(paramNames),len(paramNames)),labels=paramNames,rotation=90)
+    plt.subplots_adjust(bottom=0.3)
+    plt.savefig(figSavePath+specNames[i]+'_Bar.png', dpi=300)
+    
+    plt.figure(figsize=(6.5,4),dpi=300)
+    plt.plot(wvt,spectra.iloc[:,i])
+    plt.title('Spectrum '+specNames[i])
+    plt.xlabel('Wavelength (nm)')
+    plt.savefig(figSavePath+specNames[i]+'_Spectrum.png', dpi=300)
 
 
 
