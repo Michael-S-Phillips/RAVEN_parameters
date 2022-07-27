@@ -13,13 +13,19 @@ from oreXpressParamCalculator import oreXpressParamCalculator
 from readSed import *
 from readLibrary import *
 
-rootPath = '/Users/phillms1/Documents/Work/RAVEN/RAVEN_parameters/OreXpressParameters/'
+date_ = '220726'
+sol_ = 'Sol106'
+mission_ = 'Heli'
+rootPath = f'/Volumes/HySpex_Back/RAVEN/FieldSeason_2022/oreXpress/{date_}/{mission_}/'
 # dataFile = 'CompiledFieldSpecta_111219.csv'
 # df = pd.read_csv(rootPath + dataFile)
 
 # -----------------------------------------------------------------------------
 # read directory with .sed files
-dataPath = '/Users/phillms1/Documents/Work/RAVEN/RAVEN_parameters/OreXpressParameters/exampleSpectra/*.sed'
+target_ = '01'
+dataPath = rootPath + f'{target_}/*.sed'
+sampleName = '_'.join([date_,sol_,mission_,'VISIR',',',target_])
+
 # -----------------------------------------------------------------------------
 
 # -----------------------------------------------------------------------------
@@ -30,7 +36,7 @@ dataPath = '/Users/phillms1/Documents/Work/RAVEN/RAVEN_parameters/OreXpressParam
 
 df = getSedFiles(dataPath)
 wvt = df.iloc[:,0]
-spectra = df.iloc[:,1:]/100
+spectra = df.iloc[:,1:]
 specNames = list(spectra.columns)
 paramNames = ['OLINDEX3','LCPINDEX2','HCPINDEX2','BDI1000VIS','BD530_2','BD920_2','BD2210_2','BD2190','D2165','BD2250','BD2355','BD2290','D2300','D2200','BD1900r2','MIN2295_248','MIN2345_253','BDCARB','SINDEX2','BD2100_2','BD1900_2','MIN2250','BD2250','BD1900r2']#,'ISLOPE','BD1400','IRR2']
 
@@ -84,8 +90,9 @@ paramDF = pd.DataFrame(pdf_,columns=specNames)
 
 #%% plot cell
 import os
-dateStr = '220713' #YYMMDD
-figSavePath = rootPath+'Output/'+dateStr+'/'
+# dateStr = '220724' #YYMMDD
+# figSavePath = rootPath+'Output/'+dateStr+'/'
+figSavePath = rootPath+f'{target_}/ParameterOutput/'
 
 if os.path.isdir(figSavePath) is False:
     os.mkdir(figSavePath)
@@ -96,13 +103,15 @@ for i in range(np.shape(paramDF)[1]):
     plt.title(specNames[i]+' Parameter Values')
     plt.xticks(np.linspace(1,len(paramNames),len(paramNames)),labels=paramNames,rotation=90)
     plt.subplots_adjust(bottom=0.3)
-    plt.savefig(figSavePath+specNames[i]+'_Bar.png', dpi=300)
+    sampleName = sampleName.replace(',','Bar')
+    plt.savefig(figSavePath+sampleName+'.png', dpi=300)
     
     plt.figure(figsize=(6.5,4),dpi=300)
     plt.plot(wvt,spectra.iloc[:,i])
     plt.title('Spectrum '+specNames[i])
     plt.xlabel('Wavelength (nm)')
-    plt.savefig(figSavePath+specNames[i]+'_Spectrum.png', dpi=300)
+    sampleName=sampleName.replace('Bar', 'Spectrum')
+    plt.savefig(figSavePath+sampleName+'.png', dpi=300)
 
 
 

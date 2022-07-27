@@ -12,13 +12,15 @@ import os
 import timeit
 import IPython.display as Disp
 import scipy.integrate as it
+import spectral.io.envi as envi
 from param_utils import *
 from matplotlib.widgets import LassoSelector
 from matplotlib import pyplot as plt 
 from ipywidgets import widgets
 from spectral import *
-import spectral.io.envi as envi
-
+from joblib import delayed, Parallel
+from itertools import product
+from tqdm import tqdm
 
 
 class paramCalculator:
@@ -34,7 +36,7 @@ class paramCalculator:
         
     '''
     
-    def __init__(self, vfile, sfile,outdir):
+    def __init__(self, vfile, sfile,outdir,crop=False):
         self.vfile = vfile
         self.sfile = sfile
         self.outdir = outdir
@@ -43,8 +45,14 @@ class paramCalculator:
         self.s_ = envi.open(sfile)
         print('objects loaded\nloading data')
         tic = timeit.default_timer()
-        self.v = np.flip(np.transpose(self.v_.load(),(1,0,2)),axis=0)
-        self.s = np.flip(np.transpose(self.s_.load(),(1,0,2)),axis=0)
+        if crop==False:
+            self.v = np.flip(np.transpose(self.v_.load(),(1,0,2)),axis=0)
+        # self.v = np.where(self.v==2,np.nan,self.v)
+            self.s = np.flip(np.transpose(self.s_.load(),(1,0,2)),axis=0)
+        elif crop==True:
+            self.v = np.array(self.v_.load())
+            self.s = np.array(self.s_.load())
+        # self.s = np.where(self.s==2,np.nan,self.s)
         toc = timeit.default_timer()-tic
         print(f'{np.round(toc/60,2)} minutes to load data')
         # load wave tables
@@ -185,46 +193,160 @@ class paramCalculator:
         nmin = np.nanmin(np.where(img>-np.inf,img,np.nan))
         img = np.where(img>-np.inf,img,nmin)
         return img
+    # old, but functional, RPEAK1
     def RPEAK1(self):
         cube = self.v
         wvt = self.v_bands
-        rp_wv = [442,533,600,710,740,775,800,833,860,892]
+        rp_wv = [442,533,600,710,740,775,800,833,860,892,925,963]
         rp_i = [wvt.index(getClosestWavelength(i,wvt)) for i in rp_wv]
         rp_w = [getClosestWavelength(i,wvt) for i in rp_wv]
         rp_ = cube[:,:,rp_i]
-        x_ = np.linspace(rp_w[0],rp_w[-1],num=5000)
-        rp_l = np.empty(np.shape(cube)[0:2])
-        rp_r = np.empty(np.shape(cube)[0:2])
-        for i in range(np.shape(rp_)[0]):
-            for j in range(np.shape(rp_)[1]):
-                coefs = np.polyfit(rp_w,rp_[i,j,:],4)
-                poly = np.poly1d(coefs)
-                y_ = list(poly(x_))
-                rp_l[i,j] = x_[y_.index(np.max(y_))]/1000
-                rp_r[i,j] = np.max(y_)
+        x_ = np.linspace(rp_w[0],rp_w[-1],num=521)
+        flatShape=(np.shape(rp_)[0]*np.shape(rp_)[1],np.shape(rp_)[2])       
+        rp_l = np.zeros(flatShape[0])#[]#np.empty(flatShape[0])
+        rp_r = np.zeros(flatShape[0])#[]#np.empty(flatShape[0])
+        rp_flat = np.reshape(rp_,flatShape)
+        nanIndeces = np.where(rp_flat==0.0)
+        goodIndeces = np.where(rp_flat!=0.0)
+        goodIndx = np.unique(goodIndeces[0])
+        nanIndx = np.flipud(np.unique(nanIndeces[0]))
+        # rp_flat_nan_index = np.where(rp_flat is np.nan)
+        coefs=[]
+        poly=[]
+        print('\tcalculating polynomial coefficients')
+        # could try to parallelize this
+        coefs=[np.polyfit(rp_w, rp_flat[i,:], 5) for i in tqdm(goodIndx)]
+        print('\tcreating polynomial functions')
+        poly=[np.poly1d(coefs[i]) for i in tqdm(list(range(len(coefs))))]
+        print('\treturning peak reflectance and wavelengths of peak reflectance')
+        j=0
+        for i in tqdm(goodIndx):
+            rp_l[i] = x_[list(poly[j](x_)).index(np.nanmax(poly[j](x_)))]/1000 
+            rp_r[i] = np.nanmax(poly[j](x_)) 
+            j=j+1
+        # rp_l=[x_[list(poly[i](x_)).index(np.nanmax(poly[i](x_)))]/1000 for i in tqdm(list(range(len(poly))))]
+        # rp_l=[rp_l.insert(i,0.0) for i in tqdm(nanIndx)]
+        # print('\treturning peak reflectance value')
+        # rp_r=[np.nanmax(poly[i](x_)) for i in tqdm(list(range(len(poly))))]
+        # rp_r=[rp_r.insert(i,0.0) for i in tqdm(nanIndx)]
+        print('\tre-shaping arrays')
+        # old, works.
+        # coefs=[]
+        # poly=[]
+        # print('\tcalculating polynomial coefficients')
+        # coefs=[np.polyfit(rp_w, rp_flat[i,:], 5) for i in tqdm(range(flatShape[0]))]
+        # print('\tcreating polynomial functions')
+        # poly=[np.poly1d(coefs[i]) for i in tqdm(range(flatShape[0]))]
+        # print('\treturning wavelengths of peak reflectance')
+        # rp_l=[x_[list(poly[i](x_)).index(np.nanmax(poly[i](x_)))]/1000 for i in tqdm(range(flatShape[0]))]
+        # print('\treturning peak reflectance value')
+        # rp_r=[np.nanmax(poly[i](x_)) for i in tqdm(range(flatShape[0]))]
+        # print('\tre-shaping arrays')
+        
+        #old old, works but very slow
+        # for i in tqdm(range(flatShape[0])):
+        #     try:
+        #         coefs[i] = np.polyfit(rp_w, rp_flat[i,:], 5)
+        #         poly[i] = np.poly1d(coefs[i])
+        #         rp_l[i] = x_[list(poly[i](x_)).index(np.nanmax(poly[i](x_)))]/1000 
+        #         rp_r[i] = np.nanmax(poly[i](x_))
+        #     except:
+        #         rp_l[i] = np.nan
+        #         rp_r[i] = np.nan
+        
+        shape2d = (np.shape(rp_)[0],np.shape(rp_)[1])
+        rp_l=np.reshape(rp_l,shape2d)
+        rp_r=np.reshape(rp_r,shape2d)
+        # for i in range(np.shape(rp_)[0]):
+        #     for j in range(np.shape(rp_)[1]):
+        #         coefs = np.polyfit(rp_w,rp_[i,j,:],4)
+        #         poly = np.poly1d(coefs)
+        #         y_ = list(poly(x_))
+        #         rp_l[i,j] = x_[y_.index(np.max(y_))]/1000
+        #         rp_r[i,j] = np.max(y_)
         return rp_l,rp_r
-    def BDI1000VIS(self,rp_r=False):
+    # def RPEAK1(self):
+    #     # Define wrapper to get coefficients for pixel at (x, y)
+    #     # We also need to return (x, y) because the parallel computation does not
+    #     # necessarily preserve the order, so this is just the easiest way to keep
+    #     # coefficients and coordinates grouped together
+    #     def get_coeffs(x, y):
+    #         return x, y, np.polyfit(wvt, rp_[x, y,:], deg=degree)
+        
+    #     cube = self.v
+    #     wvt = self.v_bands
+    #     rp_wv = [442,533,600,710,740,775,800,833,860,892,925,963]
+    #     rp_i = [wvt.index(getClosestWavelength(i,wvt)) for i in rp_wv]
+    #     rp_w = [getClosestWavelength(i,wvt) for i in rp_wv]
+    #     rp_ = cube[:,:,rp_i]
+    #     row_size = np.shape(rp_)[0]
+    #     col_size = np.shape(rp_)[0]
+    #     x_ = np.linspace(rp_w[0],rp_w[-1],num=521)
+    #     # Degree of polynomial
+    #     degree = 5
+    #     print('\tcalculating polynomial coefficients')
+    #     # Run 12 jobs in parallel to fit polymials and collect results in a list
+    #     coefs = Parallel(n_jobs=12)(delayed(get_coeffs)(x, y) for x, y in tqdm(list(product(range(row_size), range(col_size)))))
+        
+    #     print('\tcalculating maximum reflectance and wavelength values')
+    #     # Collect / reshape the list into a proper numpy array
+    #     rp_r = np.empty((row_size, col_size))
+    #     rp_l = np.empty((row_size, col_size))
+    #     for x, y, coeff in tqdm(coefs):
+    #         rp_r[x, y] = np.nanargmax(np.polyval(coeff,x_))
+    #         rp_l[x, y] = x_[list(np.polyval(coeff,x_)).index(rp_r[x,y])]
+    #     return rp_l,rp_r
+    
+    def BDI1000VIS(self,rp_r=None):
         cube = self.v
         wvt = self.v_bands
-        if rp_r is False:
+        if rp_r is None:
             rp_l, rp_r = self.RPEAK1()
-        bdi_wv = [833,860,892,925,951,984,1023] 
+        bdi_wv = [833,860,892,925,951,984,989] 
         vi = [wvt.index(getClosestWavelength(i,wvt)) for i in bdi_wv]
         wv_um = [getClosestWavelength(i,wvt)/1000 for i in bdi_wv]
+        wv_ = np.linspace(wv_um[0],wv_um[-1],num=201)
         bdi1000_cube = cube[:,:,vi]
         bdi_norm = np.empty(np.shape(bdi1000_cube))
         for b in range(len(vi)):
             bdi_norm[:,:,b] = bdi1000_cube[:,:,b]/rp_r
         
+        # flatShape=(np.shape(bdi_norm)[0]*np.shape(bdi_norm)[1],np.shape(bdi_norm)[2])       
+        # bdi1000vis_value = np.zeros(flatShape[0])
+        # bdi_norm_flat = np.reshape(bdi_norm,flatShape)
+        # nanIndeces = np.where(bdi_norm_flat==np.inf)
+        # goodIndeces = np.where(bdi_norm_flat!=np.inf)
+        # goodIndx = np.unique(goodIndeces[0])
+        # nanIndx = np.flipud(np.unique(nanIndeces[0]))
+        # for i in tqdm(goodIndx):
+        #     try:
+        #         spec_vec = bdi_norm_flat[i,:]
+        #         keepIndx = np.where(np.isnan(spec_vec) is False)
+        #         wv_um_ = [wv_um[keepIndx[q]] for q in keepIndx]
+        #         spec_vec_ = [spec_vec[keepIndx[q]] for q in keepIndx]
+        #         coefs = np.polyfit(wv_um_,spec_vec_,4)
+        #         poly = np.poly1d(coefs)
+        #         pint = np.poly1d(poly.integ())
+        #         bdi1000vis_value[i] = pint(wv_um[-1])-pint(wv_um[0])
+        #     # except LinAlgError:
+        #     except:
+        #         bdi1000vis_value[i] = 0.0
+        # bdi1000vis_value = np.reshape(bdi1000vis_value,(np.shape(bdi_norm)[0],np.shape(bdi_norm)[1]))
+        
+        # old
         bdi1000vis_value = np.empty((np.shape(cube)[0],np.shape(cube)[1]))
-        for i in range(np.shape(cube)[0]):
+        for i in tqdm(range(np.shape(cube)[0])):
             for j in range(np.shape(cube)[1]):
                 spec_vec = bdi_norm[i,j,:]
-                coefs = np.polyfit(wv_um,spec_vec,3)
-                poly = np.poly1d(coefs)
-                pint = np.poly1d(poly.integ())
-                bdi1000vis_value[i,j] = pint(wv_um[-1])-pint(wv_um[0])#it.(wv_um,1.0-spec_vec)
+                try:
+                    coefs = np.polyfit(wv_um,spec_vec,4)
+                    poly = np.poly1d(coefs)
+                    pint = np.poly1d(poly.integ())
+                    bdi1000vis_value[i,j] = pint(wv_um[-1])-pint(wv_um[0])#it.(wv_um,1.0-spec_vec)
+                except:
+                    bdi1000vis_value[i,j] = np.nan
         return bdi1000vis_value
+    
     def BD530_2(self):
         cube = self.v
         wvt = self.v_bands
@@ -414,7 +536,6 @@ class paramCalculator:
         cube = self.s
         wvt = self.s_bands
         img1 = getBandDepth(cube, wvt,2250, 2345, 2430)
-        print('check')
         img2 = getBandDepth(cube,wvt,2430, 2537, 2602)
         img3 = np.empty((np.shape(img1)[0],np.shape(img1)[1],2))
         img3[:,:,0] = img1
@@ -538,6 +659,20 @@ class paramCalculator:
         toc = timeit.default_timer()-tic
         print(f'FAL finished in {round(toc,2)} seconds')
         return img
+    def TRU(self,norm=True):
+        print('calculating TRU browse product')
+        tic = timeit.default_timer()
+        p1 = getBand(self.v,self.v_bands,637)
+        p2 = getBand(self.v,self.v_bands,550)
+        p3 = getBand(self.v,self.v_bands,463)
+        if norm is True:
+            p1 = normalizeParameter(p1)
+            p2 = normalizeParameter(p2)
+            p3 = normalizeParameter(p3)
+        img = buildSummary(p1, p2, p3)
+        toc = timeit.default_timer()-tic
+        print(f'TRU finished in {round(toc,2)} seconds')
+        return img
     def PAL(self, norm=False): 
         print('calculating PAL browse product')
         tic = timeit.default_timer()
@@ -636,23 +771,176 @@ class paramCalculator:
         toc = timeit.default_timer()-tic
         print(f'HYS finished in {round(toc,2)} seconds')
         return img
-    
-    def MNF_(self):
-        s = self.s
-        v = self.v
+    # -------------------------------------------------------------------------
+    # All Parameters 
+    # -------------------------------------------------------------------------
+    def calculateSwirParams(self):
+        # SWIR Params
         tic = timeit.default_timer()
-        s_signal = calc_stats(s)
-        s_noise = noise_from_diffs(s)
-        s_mnfr = mnf(s_signal, s_noise)
-        s_mnf10 = s_mnfr.reduce(s, num=10)
-        
-        v_signal = calc_stats(v)
-        v_noise = noise_from_diffs(v)
-        v_mnfr = mnf(v_signal, v_noise)
-        v_mnf10 = v_mnfr.reduce(v, num=10)
+        print('\rcalculating OLINDEX3')
+        p1=self.OLINDEX3()
+        p1 = np.where(self.s[:,:,100]==0.0,np.nan,p1)
+        print('\rcalculating LCPINDEX2')
+        p2=self.LCPINDEX2()
+        p2 = np.where(self.s[:,:,100]==0.0,np.nan,p2)
+        print('\rcalculating HCPINDEX2')
+        p3=self.HCPINDEX2()
+        p3 = np.where(self.s[:,:,100]==0.0,np.nan,p3)
+        print('\rcalculating BD1400')
+        p4=self.BD1400()
+        p4 = np.where(self.s[:,:,100]==0.0,np.nan,p4)
+        print('\rcalculating BD1900_2')
+        p5=self.BD1900_2()
+        p5 = np.where(self.s[:,:,100]==0.0,np.nan,p5)
+        print('\rcalculating BD1900r2')
+        p6=self.BD1900r2()
+        p6 = np.where(self.s[:,:,100]==0.0,np.nan,p6)
+        print('\rcalculating BD2100_2')
+        p7=self.BD2100_2()
+        p7 = np.where(self.s[:,:,100]==0.0,np.nan,p7)
+        print('\rcalculating BD2165')
+        p8=self.BD2165()
+        p8 = np.where(self.s[:,:,100]==0.0,np.nan,p8)
+        print('\rcalculating BD2190')
+        p9=self.BD2190()
+        p9 = np.where(self.s[:,:,100]==0.0,np.nan,p9)
+        print('\rcalculating BD2210_2')
+        p10=self.BD2210_2()
+        p10 = np.where(self.s[:,:,100]==0.0,np.nan,p10)
+        print('\rcalculating BD2250')
+        p11 =self.BD2250()
+        p11 = np.where(self.s[:,:,100]==0.0,np.nan,p11)
+        print('\rcalculating BD2290')
+        p12=self.BD2290()
+        p12 = np.where(self.s[:,:,100]==0.0,np.nan,p12)
+        print('\rcalculating BD2355')
+        p13=self.BD2355() 
+        p13 = np.where(self.s[:,:,100]==0.0,np.nan,p13)
+        print('\rcalculating BDCARB')
+        p14=self.BDCARB()
+        p14 = np.where(self.s[:,:,100]==0.0,np.nan,p14)
+        print('\rcalculating D2200')
+        p15=self.D2200()
+        p15 = np.where(self.s[:,:,100]==0.0,np.nan,p15)
+        print('\rcalculating D2300')
+        p16=self.D2300()
+        p16 = np.where(self.s[:,:,100]==0.0,np.nan,p16)
+        print('\rcalculating IRR2')
+        p17=self.IRR2()
+        p17 = np.where(self.s[:,:,100]==0.0,np.nan,p17)
+        print('\rcalculating ISLOPE')
+        p18=self.ISLOPE()
+        p18 = np.where(self.s[:,:,100]==0.0,np.nan,p18)
+        print('\rcalculating MIN2250')
+        p19=self.MIN2250()
+        p19 = np.where(self.s[:,:,100]==0.0,np.nan,p19)
+        print('\rcalculating MIN2295_2480')
+        p20=self.MIN2295_2480()
+        p20 = np.where(self.s[:,:,100]==0.0,np.nan,p20)
+        print('\rcalculating MIN2345_2537')
+        p21=self.MIN2345_2537()
+        p21 = np.where(self.s[:,:,100]==0.0,np.nan,p21)
+        print('\rcalculating R2529')
+        p22 = getBand(self.s,self.s_bands,2529)
+        p22 = np.where(self.s[:,:,100]==0.0,np.nan,p22)
+        print('\rcalculating R1506')
+        p23 = getBand(self.s,self.s_bands,1506)
+        p23 = np.where(self.s[:,:,100]==0.0,np.nan,p23)
+        print('\rcalculating R1080')
+        p24 = getBand(self.s,self.s_bands,1080)
+        p24 = np.where(self.s[:,:,100]==0.0,np.nan,p24)
+        print('\rcalculating SINDEX2')
+        p25=self.SINDEX2()
+        p25 = np.where(self.s[:,:,100]==0.0,np.nan,p25)
+        print('\rSWIR parameters calculated!\r')
         toc = timeit.default_timer()-tic
-        print(f'{round(toc/60,2)} minutes to calculate MNF')
-        return s_mnf10, v_mnf10
+        pTup = (p1,p2,p3,p4,p5,p6,p7,p8,p9,p10,p11,p12,p13,p14,p15,p16,p17,p18,p19,p20,p21,p22,p23,p24,p25)
+        img = np.dstack(pTup)
+        print(f'calculation took {round(toc/60,2)} minutes')
+        return img
+    def calculateVisParams(self):
+        # VNIR PARAMETERS
+        tic = timeit.default_timer()
+        print('\rcalculating R637')
+        p1 = getBand(self.v,self.v_bands,637)
+        p1 = np.where(self.v[:,:,100]==0.0,np.nan,p1)
+        print('\rcalculating R550')
+        p2 = getBand(self.v,self.v_bands,550)
+        p2 = np.where(self.v[:,:,100]==0.0,np.nan,p2)
+        print('\rcalculating R463')
+        p3 = getBand(self.v,self.v_bands,463)
+        p3 = np.where(self.v[:,:,100]==0.0,np.nan,p3)
+        print('\rcalculating BD530_2')
+        p4=self.BD530_2()
+        p4 = np.where(self.v[:,:,100]==0.0,np.nan,p4)
+        print('\rcalculating BD920_2')
+        p5=self.BD920_2()
+        p5 = np.where(self.v[:,:,100]==0.0,np.nan,p5)
+        print('\rcalculating RPEAK1')
+        p6,rp_r=self.RPEAK1()
+        p6 = np.where(self.v[:,:,100]==0.0,np.nan,p6)
+        print('\rcalculating BDI1000VIS')
+        p7=self.BDI1000VIS(rp_r=rp_r)
+        p7 = np.where(self.v[:,:,100]==0.0,np.nan,p7)
+        toc = timeit.default_timer()-tic
+        pTup = (p1,p2,p3,p4,p5,p6,p7)
+        img = np.dstack(pTup)
+        print('\rVis parameters calculated!\r')
+        print(f'calculation took {round(toc/60,2)} minutes')
+        return img
+    # -------------------------------------------------------------------------
+    # MNF Products
+    # -------------------------------------------------------------------------
+    def SWIR_MNF(self,mask=False):
+        # s = self.s
+        # v = self.v
+        tic = timeit.default_timer()
+        print('processing SWIR MNF')
+        print('calculating signal')
+        if mask == True:
+            mask0 = np.where(self.s==0.0,0,1)
+            mask2 = np.where(self.s==2.0,0,1)
+            mask = mask0*mask2
+            s_signal = calc_stats(self.s,mask=mask)
+        elif mask == False:
+            s_signal = calc_stats(self.s)
+        print('calculating noise')
+        rowCenter = int(np.ceil(np.shape(self.s)[0]/2))
+        colCenter = int(np.ceil(np.shape(self.s)[1]/2))
+        s_noise = noise_from_diffs(self.s[(rowCenter-100):rowCenter+100,(colCenter-100):(colCenter+100),:])
+        print('calculating mnf')
+        s_mnfr = mnf(s_signal, s_noise)
+        print('reducing mnf')
+        s_mnf10 = s_mnfr.reduce(self.s, num=10)
+        toc = timeit.default_timer()-tic
+        print('done!')
+        print(f'{round(toc/60,2)} minutes to calculate SWIR MNF')
+        return s_mnf10
+    
+    def VIS_MNF(self,mask=False):
+        tic = timeit.default_timer()
+        print('processing VIS MNF')
+        print('calculating signal')
+        if mask==True:
+            mask0 = np.where(self.v==0.0,0,1)
+            mask2 = np.where(self.s==2.0,0,1)
+            mask = mask0*mask2
+            v_signal = calc_stats(self.v,mask=mask)
+        elif mask==False:
+            v_signal = calc_stats(self.v)
+            
+        print('calculating noise')
+        rowCenter = int(np.ceil(np.shape(self.v)[0]/2))
+        colCenter = int(np.ceil(np.shape(self.v)[1]/2))
+        v_noise = noise_from_diffs(self.v[(rowCenter-100):rowCenter+100,(colCenter-100):(colCenter+100),:])
+        print('calculating mnf')
+        v_mnfr = mnf(v_signal, v_noise)
+        print('reducing mnf')
+        v_mnf10 = v_mnfr.reduce(self.v, num=10)
+        toc = timeit.default_timer()-tic
+        print('done!')
+        print(f'{round(toc/60,2)} minutes to calculate VIS MNF')
+        return v_mnf10
     
     
     

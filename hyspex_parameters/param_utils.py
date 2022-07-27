@@ -82,23 +82,42 @@ def getBandRatio(cube,wvt,num_l,denom_l,num_w=5,denom_w=5):
 def normalizeParameter(p):
     return (p-np.nanmean(p))/np.nanstd(p)
 
-def browse2bit(B,cropZero=True,norm=False):
-    for i in range(3):
-        if norm is True:
-            B[:,:,i] = normalizeParameter(B[:,:,i])
-        if cropZero is True:
-            b = np.where(B[:,:,i]>0,B[:,:,i],0)
-        else:
-            b=B[:,:,i]
-        B[:,:,i] = np.array((256*((b-np.nanmin(b))/(np.nanmax(b)-np.nanmin(b)))),dtype='int')
-    return B
+def cropZeros(p):
+    return np.where(p<0,0.0,p)
+
+def browse2bit(B):
+    A=B
+    for i in range(np.shape(B)[2]):
+        b = B[:,:,i]
+        A[:,:,i] = np.array((255*((b-np.nanmin(b))/(np.nanmax(b)-np.nanmin(b)))),dtype='int')
+    return A
 
 def stretchBand(p,stype='linear',perc = 0.02):
-    if stype is 'linear':
-        sp = (p-(1-perc)*np.min(p))/((1-perc)*(np.max(p)-np.min(p)))
+    if stype == 'linear':
+        pn = np.where(p==0.0,np.nan,p)
+        pn = np.where(p==2.0,np.nan,p)
+        sp = (pn-(1-perc)*np.nanmin(pn))/((1-perc)*(np.nanmax(pn)-np.nanmin(pn)))
+        sp = np.where(np.isnan(sp) is True,0.0,sp)
+        sp = np.where(sp<0,0.0,sp)
+        sp = np.where(sp>1,1.0,sp)
     # if flag is '1std':
     #     sp = 
     return sp
+
+def cropNZeros(img):
+    img2=img
+    n=np.shape(img)[2]
+    for b in range(n):
+        img2[:,:,b] = cropZeros(img[:,:,b])
+    return img2
+
+def stretchNBands(img,perc=0.02):
+    img2=img
+    n = np.shape(img)[2]
+    for b in range(n):
+        img2[:,:,b]=stretchBand(img[:,:,b],perc=perc)
+    return img2
+    
 
 
     
